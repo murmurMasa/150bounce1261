@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>バウンドボール</title>
+<script>
+var canvas, context, canvasRect;        //キャンバス
+var balls = new Array();                //ボール
+var x, tx, dir;                         //プレイヤーの位置、目標、方向
+var status = "ready";                   //ステータス（ready/alive/dead)
+var beamX, beamY, beamL;                //ビームの位置、長さ
+var checkFire, checkBeam;               //ビーム発射フラグ
+
+//ボールクラス
+function Ball(x, y, r, dir) {           //ボールクラスを作成
+   this.x = x;                          //位置
+   this.y = y;
+   this.r = r;                          //半径
+   this.dirX = 6 * dir;                 //移動量
+   this.dirY = 6;
+}
+
+Ball.prototype.update = function() {    //ボールクラスのupdate()メソッドを作成
+   //移動
+   this.x += this.dirX;
+   this.y += this.dirY;
+   if (this.x < this.r) this.dirX *= -1;    //左右の端でボールの動きを反転
+   if (this.x > 800 - this.r) this.dirX *= -1;
+   this.dirY += 0.1;                        //下向の加速度
+   if (this.y > 600 - this.r) {             //床に着いたらはずむ
+      this.y = 600 - this.r;
+      this.dirY *= -0.95
+   }
+   //描画
+   var grad = context.createRadialGradient(this.x, this.y, 0, this.x, this.y, this.r);  //円形グラデーションを作成
+   grad.addColorStop(0.0, "#FFFF00");           //グラデーションの色を設定　0=黄色　1.0=赤
+   grad.addColorStop(1.0, "#FF0000");
+   context.fillStyle = grad;
+   context.beginPath();                         //指定したグラデーションで円を描く
+   context.arc(this.x, this.y, this.r, 0, Math.PI*2);
+   context.fill();
+}
+
+function init() {
+    //キャンバスの取得
+    canvas = document.getElementById("game");       //ゲームエリアのID
+    context = canvas.getContext("2d");
+    canvasRect = canvas.getBoundingClientRect();    //ゲームエリアの矩形情報を取得
+    //描画開始
+    setInterval(update, 20);                        //20ミリ秒ごとにupdate()関数を実行
+}
+
+function initGame(n) {
+    //初期化
+    x = 400;
+    dir = 0;
+    status = "alive";
+    balls = [];
+    balls.push(new Ball(50*n, 50, Math.pow(2, 4+n),1)); //2を(4+n)乗した半径のボールを作成して追加
+    checkFire = false;
+    checkBeam = false;
+}
+
+function drawText(text, color) {
+    //テキストの描画
+    context.textAlign = "center";       //文字の配置は上下左右センター
+    context.textBaseline = "middle";
+    context.font = "bold 60px Arial";   //文字の大きさ60pxでフォントはArialの太字
+    context.fillStyle = color;          //指定した色で文字を描く
+    context.fillText(text, 400, 300);
+}
+
+function update() {
+    //背景：黒
+    context.fillStyle = "#000000";                          //ゲームエリアを黒色で塗りつぶす
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    //プレイヤーの移動
+    context.fillStyle = "#999999";      //ボールに当たったときのプレイヤーと砲塔の色はグレー
+    if (status == "alive") {
+        x += dir * 5;
+        if (x < 0) X = 0;               //左右の端ならそれ以上移動できない
+        if (x > 800) x = 800;
+        if ((x > tx-5) && (x < tx+5)) dir = 0;      //マウスカーソルの位置で止まる
+        context.fillStyle = "#00FF00";              //プレイヤーの色は緑色
+    }
+    context.beginPath();                            //半径20の円でプレイヤーを描く
+    context.arc(x, 580, 20, 0, Math.PI*2)
+    context.fill();
+    if ((!checkBeam) && (status == "alive")) context.fillStyle = "#0099FF"; //砲塔の色は明るい青
+    context.fillRect(x-2, 550, 4, 10);
+    //ビームの移動
+    if (checkFire) {            //ビームを撃っている時
+       beamL += 10;             //ビームの長さを伸ばす
+       if (beamL > 300) checkFire = false;      //ビームが300より長くなったら止める
+    }
+    beamY += -10;                               //ビームを上に動かす
+    if (beamY + beamL > 0) {                    //ビームが画面内になるなら
+       context.strokeStyle = "#00FFFF";         //水色で長さbeamLの線を描く
+       context.beginPath();
+       context.moveTo(beamX, beamY);
+       context.lineTo(beamX, beamY+beamL);
+       context.stroke();
+    } else {                                    //ビームが画面の外に出たなら
+       checkBeam = false;    
+    }
+    //ボールの移動
+    for (var i=0; i<balls.length; i++) {        //画面に存在するボールの数ぶんくり返し
+       balls[i].update();
+       //プレイヤーとボールのあたり判定
+       var dx = balls[i].x - x;                 //プレイヤーとボールの距離を求める
+       var dy = balls[i].y - 580;
+       var d = Math.sqrt(Math.pow(dx, 2)+Math.pow(dy, 2));
+       if ((status == "alive")&&(d < balls[i].r + 20)) status = "dead";     //当たったとき
+       //ビームとボールのあたり判定
+       dx = balls[i].x - beamX;             //ビームの線端とボールの距離を求める
+       dy = 0;
+       if (balls[i].y < beamY) dy = balls[i].y - beamY;
+       if (balls[i].y > beamY + beamL) dy = balls[i].y - (beamY + beamL);
+       d = Math.sqrt(Math.pow(dx, 2) + Math.pow(dy, 2));
+       if (d < balls[i].r) {        //当たったとき
+          //ボールの分裂
+          divideBall(balls[i]);     //半径が半分のボールを２つ作成
+          balls.splice(i, 1);       //当たったボールを削除
+          i--;       
+       }
+    }
+    //メッセージの描画
+    if (status == "dead") {
+        drawText("GAME OVER", "#FF0000");       //赤色でGAME OVERと表示
+    } else if((status == "alive")&&(balls.length == 0)) {
+        drawText("GAME CLEAR", "#FFFFFF");      //白色でGAME CLEARと表示
+    } else if(status == "ready") {
+        drawText("Select Level 1-3", "#00FFFF");    //水色でSelectLevel 1-3と表示
+    }
+}
+
+function divideBall(ball) {
+    //分裂
+    if (ball.r > 4) {  //ボールの半径が４より大きいなら
+       balls.push(new Ball(ball.x+ball.r/2, ball.y, ball.r/2, 1));  //半径が半分で左右に進む２つのボールを作成して追加
+       balls.push(new Ball(ball.x-ball.r/2, ball.y, ball.r/2, -1));
+    }
+}
+
+function startBeam(event) {
+    //ビーム発射
+    if((status == "alive")&&(!checkBeam)) { //ビームを撃っていないなら
+       checkFire = true;
+       checkBeam = true;
+       beamX = x;
+       beamY = 550;
+       beamL = 0
+       dir = 0;
+    }
+}
+
+function stopBeam(event) {
+    //ビーム発射終了
+    checkFire = false;
+}
+
+function setDirection(event){
+    //プレイヤーの移動方向をセット
+    tx = event.clientX - canvasRect.left;       //ゲームエリア内のマウスカーソルのＸ座標
+    if ((x > tx)&&(!checkFire)) dir = -1;       //ビームを撃っていないならプレイヤーの移動方向はマウスカーソルのある方向
+    if ((x < tx)&&(!checkFire)) dir = 1;
+}
+</script>
+</head>
+<body onload="init()">
+<p>バウンドボール</p>
+<input type="button" value="Level 1" onclick="initGame(1)">
+<input type="button" value="Level 2" onclick="initGame(2)">
+<input type="button" value="Level 3" onclick="initGame(3)">
+<hr>
+<canvas id="game" width="800" height="600" onmousedown="startBeam(event)"
+ onmouseup="stopBeam(event)" onmouseleave="stopBeam(event)"
+ onmousemove="setDirection(event)">
+</canvas>
+</body>
+</html>
